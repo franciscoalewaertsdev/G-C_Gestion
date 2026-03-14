@@ -73,9 +73,17 @@ async function ensureFallbackProduct(tx: Prisma.TransactionClient | typeof prism
 export async function listProducts(search?: string) {
   const where = search
     ? {
-        OR: [{ name: { contains: search, mode: "insensitive" as const } }, { barcode: { contains: search } }]
+        AND: [
+          {
+            OR: [
+              { name: { contains: search, mode: "insensitive" as const } },
+              { barcode: { contains: search } }
+            ]
+          },
+          { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } }
+        ]
       }
-    : undefined;
+    : { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } };
 
   return prisma.product.findMany({
     select: {
@@ -116,9 +124,17 @@ const listProductsPaginatedCached = unstable_cache(
   async (search: string | undefined, page: number, pageSize: number) => {
     const where = search
       ? {
-          OR: [{ name: { contains: search, mode: "insensitive" as const } }, { barcode: { contains: search } }]
+          AND: [
+            {
+              OR: [
+                { name: { contains: search, mode: "insensitive" as const } },
+                { barcode: { contains: search } }
+              ]
+            },
+            { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } }
+          ]
         }
-      : undefined;
+      : { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } };
 
     const [items, total] = await Promise.all([
       prisma.product.findMany({
@@ -196,6 +212,11 @@ const listProductsForSaleFormCached = unstable_cache(
         orderBy: {
           value: "asc"
         }
+      }
+    },
+    where: {
+      NOT: {
+        barcode: FALLBACK_PRODUCT_BARCODE
       }
     },
     orderBy: {
@@ -300,7 +321,10 @@ export async function deleteProduct(id: string) {
 
       await tx.saleItem.updateMany({
         where: { productId: id },
-        data: { productId: fallbackProduct.id }
+        data: {
+          productId: fallbackProduct.id,
+          variantId: null
+        }
       });
     }
 
