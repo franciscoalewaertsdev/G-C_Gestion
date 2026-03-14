@@ -199,33 +199,22 @@ export async function deleteStockEntry(id: string) {
       throw new Error("Ingreso no encontrado");
     }
 
-    await Promise.all(
-      entry.items.map((item) =>
-        tx.product.update({
+    await Promise.all([
+      ...entry.items.map((item) =>
+        tx.product.updateMany({
           where: { id: item.productId },
-          data: {
-            currentStock: {
-              decrement: item.quantity
-            }
-          }
+          data: { currentStock: { decrement: item.quantity } }
         })
-      )
-    );
-
-    await Promise.all(
-      entry.items
-        .filter((item): item is (typeof entry.items)[number] & { variantId: string } => Boolean(item.variantId))
+      ),
+      ...entry.items
+        .filter((item) => Boolean(item.variantId))
         .map((item) =>
-          tx.productVariant.update({
-            where: { id: item.variantId },
-            data: {
-              stock: {
-                decrement: item.quantity
-              }
-            }
+          tx.productVariant.updateMany({
+            where: { id: item.variantId! },
+            data: { stock: { decrement: item.quantity } }
           })
         )
-    );
+    ]);
 
     await tx.stockEntry.delete({ where: { id } });
   });

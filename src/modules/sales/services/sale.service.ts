@@ -387,33 +387,25 @@ export async function deleteSale(id: string) {
       throw new Error("Venta no encontrada");
     }
 
-    const saleItems = sale.items as Array<(typeof sale.items)[number] & { variantId?: string | null }>;
+    const saleItems = sale.items;
 
-    const productUpdates = saleItems.map((item) =>
-      tx.product.update({
-        where: { id: item.productId },
-        data: {
-          currentStock: {
-            increment: item.quantity
-          }
-        }
-      })
-    );
-
-    const variantUpdates = saleItems
-      .filter((item): item is (typeof saleItems)[number] & { variantId: string } => Boolean(item.variantId))
-      .map((item) =>
-        tx.productVariant.update({
-          where: { id: item.variantId },
-          data: {
-            stock: {
-              increment: item.quantity
-            }
-          }
+    // Use updateMany per item so no crash if the product/variant was already deleted
+    await Promise.all([
+      ...saleItems.map((item) =>
+        tx.product.updateMany({
+          where: { id: item.productId },
+          data: { currentStock: { increment: item.quantity } }
         })
-      );
-
-    await Promise.all([...productUpdates, ...variantUpdates]);
+      ),
+      ...saleItems
+        .filter((item) => Boolean(item.variantId))
+        .map((item) =>
+          tx.productVariant.updateMany({
+            where: { id: item.variantId! },
+            data: { stock: { increment: item.quantity } }
+          })
+        )
+    ]);
 
     if (sale.invoice) {
       await tx.invoice.delete({ where: { id: sale.invoice.id } });
