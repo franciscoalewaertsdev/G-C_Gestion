@@ -31,7 +31,10 @@ export function buildInvoicePdfFileName(invoiceNumber: string) {
 }
 
 export async function saveInvoicePdf(invoiceNumber: string, buffer: Buffer) {
-  const invoicesDir = path.join(process.cwd(), "invoices");
+  // Vercel serverless has a read-only filesystem; only /tmp is writable.
+  const invoicesDir = process.env.VERCEL
+    ? "/tmp"
+    : path.join(process.cwd(), "invoices");
   await mkdir(invoicesDir, { recursive: true });
 
   const fileName = buildInvoicePdfFileName(invoiceNumber);
