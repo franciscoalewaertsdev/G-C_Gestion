@@ -204,6 +204,7 @@ export function StockEntryForm({ suppliers, products }: Props) {
 
         const parsedItems = items.map((item) => ({
           productId: item.productId,
+          variantId: item.variantId || undefined,
           quantity: Number(item.quantity)
         }));
 

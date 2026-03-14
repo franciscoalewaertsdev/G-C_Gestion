@@ -5,14 +5,34 @@ import { CreateStockEntryInput } from "@/modules/inventory/schemas/stock-entry.s
 export async function registerStockEntry(data: CreateStockEntryInput, userId: string) {
   return prisma.$transaction(async (tx) => {
     const productIds = [...new Set(data.items.map((item) => item.productId))];
+    const variantIds = [...new Set(data.items.map((item) => item.variantId).filter((id): id is string => Boolean(id)))];
     const products = await tx.product.findMany({
       where: { id: { in: productIds } },
       select: { id: true, costPrice: true }
     });
+    const variants = variantIds.length
+      ? await tx.productVariant.findMany({
+          where: { id: { in: variantIds } },
+          select: { id: true, productId: true }
+        })
+      : [];
+
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
     const costPriceByProductId = new Map(products.map((product) => [product.id, product.costPrice]));
 
     if (costPriceByProductId.size !== productIds.length) {
       throw new Error("Uno o mas productos no existen.");
+    }
+
+    for (const item of data.items) {
+      if (!item.variantId) {
+        continue;
+      }
+
+      const variant = variantById.get(item.variantId);
+      if (!variant || variant.productId !== item.productId) {
+        throw new Error("La variante seleccionada no pertenece al producto.");
+      }
     }
 
     const stockEntry = await tx.stockEntry.create({
@@ -24,6 +44,7 @@ export async function registerStockEntry(data: CreateStockEntryInput, userId: st
         items: {
           create: data.items.map((item) => ({
             productId: item.productId,
+            variantId: item.variantId ?? null,
             quantity: item.quantity,
             unitCost: costPriceByProductId.get(item.productId)
           }))
@@ -43,6 +64,24 @@ export async function registerStockEntry(data: CreateStockEntryInput, userId: st
           }
         })
       )
+    );
+
+    await Promise.all(
+      data.items
+        .filter(
+          (item): item is CreateStockEntryInput["items"][number] & { variantId: string } =>
+            Boolean(item.variantId)
+        )
+        .map((item) =>
+          tx.productVariant.update({
+            where: { id: item.variantId },
+            data: {
+              stock: {
+                increment: item.quantity
+              }
+            }
+          })
+        )
     );
 
     return stockEntry;
@@ -171,6 +210,21 @@ export async function deleteStockEntry(id: string) {
           }
         })
       )
+    );
+
+    await Promise.all(
+      entry.items
+        .filter((item): item is (typeof entry.items)[number] & { variantId: string } => Boolean(item.variantId))
+        .map((item) =>
+          tx.productVariant.update({
+            where: { id: item.variantId },
+            data: {
+              stock: {
+                decrement: item.quantity
+              }
+            }
+          })
+        )
     );
 
     await tx.stockEntry.delete({ where: { id } });

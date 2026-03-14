@@ -25,7 +25,6 @@ export function ProductForm({ suppliers }: ProductFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-  const [sizeStock, setSizeStock] = useState<Record<string, string>>({});
 
   const form = useForm<ProductFormValues>({
     defaultValues: {
@@ -44,21 +43,11 @@ export function ProductForm({ suppliers }: ProductFormProps) {
     setSelectedSizes((prev) => {
       if (prev.includes(size)) {
         const next = prev.filter((item) => item !== size);
-        setSizeStock((stock) => {
-          const cloned = { ...stock };
-          delete cloned[size];
-          return cloned;
-        });
         return sortSizes(next);
       }
 
-      setSizeStock((stock) => ({ ...stock, [size]: stock[size] ?? "0" }));
       return sortSizes([...prev, size]);
     });
-  };
-
-  const updateSizeStock = (size: string, value: string) => {
-    setSizeStock((prev) => ({ ...prev, [size]: value }));
   };
 
   const onSubmit = form.handleSubmit((values) => {
@@ -66,23 +55,13 @@ export function ProductForm({ suppliers }: ProductFormProps) {
     startTransition(async () => {
       try {
         let variants: CreateProductInput["variants"] = [];
-        let totalStockFromSizes = 0;
 
         if (selectedSizes.length > 0) {
           variants = selectedSizes.map((size) => {
-            const quantityRaw = sizeStock[size] ?? "0";
-            const quantity = Number(quantityRaw);
-
-            if (!Number.isInteger(quantity) || quantity < 0) {
-              throw new Error(`Stock invalido para el talle ${size}. Debe ser entero mayor o igual a 0.`);
-            }
-
-            totalStockFromSizes += quantity;
-
             return {
               name: "Talle",
               value: size,
-              stock: quantity,
+              stock: 0,
               extraPrice: 0
             };
           });
@@ -94,7 +73,7 @@ export function ProductForm({ suppliers }: ProductFormProps) {
           barcode: values.barcode,
           costPrice: values.costPrice,
           price: values.price,
-          currentStock: selectedSizes.length > 0 ? totalStockFromSizes : values.currentStock,
+          currentStock: 0,
           lowStockAlert: values.lowStockAlert,
           supplierId: values.supplierId,
           variants
@@ -112,7 +91,6 @@ export function ProductForm({ suppliers }: ProductFormProps) {
           supplierId: suppliers[0]?.id ?? ""
         });
         setSelectedSizes([]);
-        setSizeStock({});
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "No se pudo crear el producto");
@@ -150,17 +128,6 @@ export function ProductForm({ suppliers }: ProductFormProps) {
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">Codigo de barras (opcional)</label>
         <Input placeholder="" {...form.register("barcode")} />
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Stock inicial (solo si no usas talles)
-        </label>
-        <Input
-          type="number"
-          placeholder=""
-          {...form.register("currentStock", { valueAsNumber: true })}
-        />
       </div>
 
       <div>
@@ -206,32 +173,13 @@ export function ProductForm({ suppliers }: ProductFormProps) {
           })}
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Marca los talles con botones. Luego podras cargar el stock manual por cada talle seleccionado.
+          Marca los talles disponibles. El stock se carga despues desde Inventario al ingresar mercaderia.
         </p>
       </div>
 
-      {selectedSizes.length > 0 && (
-        <div className="md:col-span-3 space-y-2 rounded-lg border p-3">
-          <p className="text-sm font-medium text-slate-700">Stock por talle</p>
-          <div className="grid gap-3 md:grid-cols-4">
-            {selectedSizes.map((size) => (
-              <div key={size}>
-                <label className="mb-1 block text-sm font-medium text-slate-700">{size}</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={sizeStock[size] ?? "0"}
-                  onChange={(event) => updateSizeStock(size, event.target.value)}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="md:col-span-3">
-        <label className="mb-1 block text-sm font-medium text-slate-700">Descripcion (opcional)</label>
-        <Input placeholder="Detalles del producto" {...form.register("description")} />
+        <label className="mb-1 block text-sm font-medium text-slate-700">Color (opcional)</label>
+        <Input placeholder="Ej: Negro, Beige, Blanco" {...form.register("description")} />
       </div>
       {error && <p className="md:col-span-3 text-sm text-red-600">{error}</p>}
       <div className="md:col-span-3">
