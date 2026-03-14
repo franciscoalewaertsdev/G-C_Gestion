@@ -1,11 +1,11 @@
 import nodemailer from "nodemailer";
 
 function getSmtpConfig() {
-  const host = process.env.SMTP_HOST;
-  const portRaw = process.env.SMTP_PORT;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM;
+  const host = process.env.SMTP_HOST?.trim();
+  const portRaw = process.env.SMTP_PORT?.trim();
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = process.env.SMTP_FROM?.trim();
 
   if (!host || !portRaw || !user || !pass || !from) {
     throw new Error("Faltan variables SMTP: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.");
