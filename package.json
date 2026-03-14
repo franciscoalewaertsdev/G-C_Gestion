@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node ./node_modules/prisma/build/index.js generate --schema ./prisma/schema.prisma",
     "dev": "node ./node_modules/next/dist/bin/next dev --turbo",
     "build": "node ./node_modules/next/dist/bin/next build",
     "start": "node ./node_modules/next/dist/bin/next start",
