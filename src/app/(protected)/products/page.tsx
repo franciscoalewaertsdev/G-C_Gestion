@@ -27,7 +27,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   const [productsResult, suppliers] = await Promise.all([
     listProductsPaginated({ page, pageSize, search: q }),
-    prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+    prisma.supplier.findMany({
+      where: {
+        OR: [{ email: null }, { email: { not: "deleted-supplier@system.local" } }]
+      },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" }
+    })
   ]);
 
   const makeHref = (nextPage: number) => {

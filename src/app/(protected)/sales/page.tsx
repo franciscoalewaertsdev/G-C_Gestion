@@ -43,6 +43,9 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
     }),
     listProductsForSaleForm(),
     prisma.supplier.findMany({
+      where: {
+        OR: [{ email: null }, { email: { not: "deleted-supplier@system.local" } }]
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" }
     })

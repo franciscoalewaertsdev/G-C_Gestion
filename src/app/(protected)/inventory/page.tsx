@@ -32,7 +32,13 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       pageSize,
       supplierId: selectedSupplierId !== "ALL" ? selectedSupplierId : undefined
     }),
-    prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.supplier.findMany({
+      where: {
+        OR: [{ email: null }, { email: { not: "deleted-supplier@system.local" } }]
+      },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" }
+    }),
     prisma.product.findMany({
       select: {
         id: true,

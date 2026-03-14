@@ -27,6 +27,9 @@ async function ensureFallbackSupplier(tx: Prisma.TransactionClient | typeof pris
 
 export async function listSuppliers() {
   return prisma.supplier.findMany({
+    where: {
+      OR: [{ email: null }, { email: { not: FALLBACK_SUPPLIER_EMAIL } }]
+    },
     include: {
       products: true
     },
