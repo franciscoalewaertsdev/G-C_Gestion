@@ -71,6 +71,10 @@ async function ensureFallbackProduct(tx: Prisma.TransactionClient | typeof prism
 }
 
 export async function listProducts(search?: string) {
+  const excludeFallbackProduct = {
+    OR: [{ barcode: null }, { barcode: { not: FALLBACK_PRODUCT_BARCODE } }]
+  };
+
   const where = search
     ? {
         AND: [
@@ -80,10 +84,10 @@ export async function listProducts(search?: string) {
               { barcode: { contains: search } }
             ]
           },
-          { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } }
+          excludeFallbackProduct
         ]
       }
-    : { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } };
+    : excludeFallbackProduct;
 
   return prisma.product.findMany({
     select: {
@@ -122,6 +126,10 @@ export async function listProducts(search?: string) {
 
 const listProductsPaginatedCached = unstable_cache(
   async (search: string | undefined, page: number, pageSize: number) => {
+    const excludeFallbackProduct = {
+      OR: [{ barcode: null }, { barcode: { not: FALLBACK_PRODUCT_BARCODE } }]
+    };
+
     const where = search
       ? {
           AND: [
@@ -131,10 +139,10 @@ const listProductsPaginatedCached = unstable_cache(
                 { barcode: { contains: search } }
               ]
             },
-            { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } }
+            excludeFallbackProduct
           ]
         }
-      : { NOT: { barcode: FALLBACK_PRODUCT_BARCODE } };
+      : excludeFallbackProduct;
 
     const [items, total] = await Promise.all([
       prisma.product.findMany({
@@ -215,9 +223,7 @@ const listProductsForSaleFormCached = unstable_cache(
       }
     },
     where: {
-      NOT: {
-        barcode: FALLBACK_PRODUCT_BARCODE
-      }
+      OR: [{ barcode: null }, { barcode: { not: FALLBACK_PRODUCT_BARCODE } }]
     },
     orderBy: {
       name: "asc"
