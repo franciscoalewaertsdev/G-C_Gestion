@@ -1,0 +1,178 @@
+import { prisma } from "@/db/prisma";
+import { unstable_cache } from "next/cache";
+import { CreateStockEntryInput } from "@/modules/inventory/schemas/stock-entry.schema";
+
+export async function registerStockEntry(data: CreateStockEntryInput, userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const productIds = [...new Set(data.items.map((item) => item.productId))];
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, costPrice: true }
+    });
+    const costPriceByProductId = new Map(products.map((product) => [product.id, product.costPrice]));
+
+    if (costPriceByProductId.size !== productIds.length) {
+      throw new Error("Uno o mas productos no existen.");
+    }
+
+    const stockEntry = await tx.stockEntry.create({
+      data: {
+        supplierId: data.supplierId,
+        userId,
+        entryDate: data.entryDate ?? new Date(),
+        notes: data.notes,
+        items: {
+          create: data.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitCost: costPriceByProductId.get(item.productId)
+          }))
+        }
+      },
+      include: { items: true }
+    });
+
+    await Promise.all(
+      data.items.map((item) =>
+        tx.product.update({
+          where: { id: item.productId },
+          data: {
+            currentStock: {
+              increment: item.quantity
+            }
+          }
+        })
+      )
+    );
+
+    return stockEntry;
+  });
+}
+
+export async function listStockEntries() {
+  return prisma.stockEntry.findMany({
+    select: {
+      id: true,
+      entryDate: true,
+      notes: true,
+      supplier: {
+        select: {
+          name: true
+        }
+      },
+      _count: {
+        select: {
+          items: true
+        }
+      }
+    },
+    orderBy: { entryDate: "desc" }
+  });
+}
+
+const listStockEntriesPaginatedCached = unstable_cache(
+  async (page: number, pageSize: number, supplierId?: string) => {
+    const where = supplierId
+      ? {
+          supplierId
+        }
+      : undefined;
+
+    const [items, total] = await Promise.all([
+      prisma.stockEntry.findMany({
+        select: {
+          id: true,
+          entryDate: true,
+          notes: true,
+          supplier: {
+            select: {
+              name: true
+            }
+          },
+          _count: {
+            select: {
+              items: true
+            }
+          }
+        },
+        where,
+        orderBy: { entryDate: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      }),
+      prisma.stockEntry.count({ where })
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    };
+  },
+  ["inventory-paginated"],
+  { tags: ["inventory"] }
+);
+
+export async function listStockEntriesPaginated(params?: { page?: number; pageSize?: number; supplierId?: string }) {
+  const page = Math.max(1, params?.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, params?.pageSize ?? 25));
+  const supplierId = params?.supplierId?.trim() || undefined;
+
+  return listStockEntriesPaginatedCached(page, pageSize, supplierId);
+}
+
+export async function getStockEntryById(id: string) {
+  return prisma.stockEntry.findUnique({
+    where: { id },
+    include: {
+      supplier: true,
+      user: true,
+      items: {
+        include: {
+          product: true
+        }
+      }
+    }
+  });
+}
+
+export async function updateStockEntryNotes(id: string, notes: string) {
+  return prisma.stockEntry.update({
+    where: { id },
+    data: {
+      notes
+    }
+  });
+}
+
+export async function deleteStockEntry(id: string) {
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.stockEntry.findUnique({
+      where: { id },
+      include: {
+        items: true
+      }
+    });
+
+    if (!entry) {
+      throw new Error("Ingreso no encontrado");
+    }
+
+    await Promise.all(
+      entry.items.map((item) =>
+        tx.product.update({
+          where: { id: item.productId },
+          data: {
+            currentStock: {
+              decrement: item.quantity
+            }
+          }
+        })
+      )
+    );
+
+    await tx.stockEntry.delete({ where: { id } });
+  });
+}
