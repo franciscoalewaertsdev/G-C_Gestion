@@ -161,3 +161,57 @@ Puedes ejecutar comandos por Node directo:
 node ./node_modules/typescript/bin/tsc --noEmit
 node ./node_modules/prisma/build/index.js generate --schema ./prisma/schema.prisma
 ```
+
+## Fase 1: Migracion a nube (datos compartidos entre PCs)
+
+Objetivo: que todas las computadoras usen la misma base de datos y el mismo backend, para que los datos queden sincronizados.
+
+### 1. Crear base de datos PostgreSQL en nube (recomendado: Neon)
+
+1. Crea un proyecto en Neon.
+2. Copia dos conexiones:
+	- Conexion pooler para app runtime -> `DATABASE_URL`
+	- Conexion directa para migraciones -> `DIRECT_URL`
+
+### 2. Configurar variables de entorno en local
+
+En `.env`:
+
+```bash
+DATABASE_URL="<URL_POOLER_NEON>"
+DIRECT_URL="<URL_DIRECTA_NEON>"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="<secret-largo-y-unico>"
+SMTP_HOST="..."
+SMTP_PORT="..."
+SMTP_USER="..."
+SMTP_PASS="..."
+SMTP_FROM="..."
+```
+
+### 3. Ejecutar migraciones en la DB de nube
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate:deploy
+npm run seed
+```
+
+### 4. Desplegar backend/app (recomendado: Vercel)
+
+1. Importa el repo en Vercel.
+2. Configura las variables de entorno en Vercel:
+	- `DATABASE_URL`
+	- `DIRECT_URL`
+	- `NEXTAUTH_URL` (URL publica del deploy)
+	- `NEXTAUTH_SECRET`
+	- `SMTP_*`
+3. Redeploy.
+
+### 5. Verificacion
+
+1. Inicia sesion en dos computadoras con la URL desplegada.
+2. Registra una venta en una PC.
+3. En la otra PC valida que, al refrescar, la venta ya este en la misma base compartida.
+
+Nota: en esta fase ya hay sincronizacion por datos compartidos en nube. La actualizacion en tiempo real sin refrescar (push instantaneo) es la Fase 2.

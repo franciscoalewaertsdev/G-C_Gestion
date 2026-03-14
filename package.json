@@ -10,6 +10,8 @@
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "prisma:generate": "node ./node_modules/prisma/build/index.js generate --schema ./prisma/schema.prisma",
     "prisma:migrate": "node ./node_modules/prisma/build/index.js migrate dev --schema ./prisma/schema.prisma",
+    "prisma:migrate:deploy": "node ./node_modules/prisma/build/index.js migrate deploy --schema ./prisma/schema.prisma",
+    "prisma:push": "node ./node_modules/prisma/build/index.js db push --schema ./prisma/schema.prisma",
     "prisma:studio": "node ./node_modules/prisma/build/index.js studio --schema ./prisma/schema.prisma",
     "seed": "node ./prisma/seed.js",
     "user:update": "node ./scripts/update-user-credentials.js",
