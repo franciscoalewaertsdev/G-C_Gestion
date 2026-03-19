@@ -209,3 +209,10 @@ model Invoice {
   @@index([invoiceNumber])
   @@index([issuedAt])
 }
+
+model GlobalSize {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -10,17 +10,23 @@ import { createProductSchema, CreateProductInput } from "@/modules/products/sche
 
 type ProductFormProps = {
   suppliers: Array<{ id: string; name: string }>;
+  globalSizes: Array<{ id: string; name: string }>;
 };
 
 type ProductFormValues = Omit<CreateProductInput, "variants">;
 
-const AVAILABLE_SIZES = ["O/S", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+const FALLBACK_SIZE_ORDER = ["O/S", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
 
-function sortSizes(sizes: string[]) {
-  return [...sizes].sort((a, b) => AVAILABLE_SIZES.indexOf(a) - AVAILABLE_SIZES.indexOf(b));
+function sortSizes(sizes: string[], order: string[]) {
+  return [...sizes].sort((a, b) => {
+    const indexA = order.indexOf(a);
+    const indexB = order.indexOf(b);
+    // Usar orden de fallback o orden alfabética
+    return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+  });
 }
 
-export function ProductForm({ suppliers }: ProductFormProps) {
+export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +49,10 @@ export function ProductForm({ suppliers }: ProductFormProps) {
     setSelectedSizes((prev) => {
       if (prev.includes(size)) {
         const next = prev.filter((item) => item !== size);
-        return sortSizes(next);
+        return sortSizes(next, FALLBACK_SIZE_ORDER);
       }
 
-      return sortSizes([...prev, size]);
+      return sortSizes([...prev, size], FALLBACK_SIZE_ORDER);
     });
   };
 
@@ -154,24 +160,30 @@ export function ProductForm({ suppliers }: ProductFormProps) {
         <label className="mb-1 block text-sm font-medium text-slate-700">
           Seleccion de talles
         </label>
-        <div className="flex flex-wrap gap-2 rounded-lg border p-3">
-          {AVAILABLE_SIZES.map((size) => {
-            const active = selectedSizes.includes(size);
+        {globalSizes.length === 0 ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            No hay talles definidos. Agrega talles desde "Gestionar Talles Disponibles" arriba.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2 rounded-lg border p-3">
+            {globalSizes.map((size) => {
+              const active = selectedSizes.includes(size.name);
 
-            return (
-              <button
-                type="button"
-                key={size}
-                onClick={() => toggleSize(size)}
-                className={`rounded-md border px-3 py-1 text-sm font-medium ${
-                  active ? "border-primary bg-primary text-white" : "border-slate-300 bg-white text-slate-700"
-                }`}
-              >
-                {size}
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  type="button"
+                  key={size.id}
+                  onClick={() => toggleSize(size.name)}
+                  className={`rounded-md border px-3 py-1 text-sm font-medium ${
+                    active ? "border-primary bg-primary text-white" : "border-slate-300 bg-white text-slate-700"
+                  }`}
+                >
+                  {size.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <p className="mt-1 text-xs text-slate-500">
           Marca los talles disponibles. El stock se carga despues desde Inventario al ingresar mercaderia.
         </p>

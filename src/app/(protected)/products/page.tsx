@@ -1,7 +1,9 @@
 import { prisma } from "@/db/prisma";
 import { ProductForm } from "@/modules/products/components/product-form";
 import { ProductsTable } from "@/modules/products/components/products-table";
+import { SizesManager } from "@/modules/products/components/sizes-manager";
 import { listProductsPaginated } from "@/modules/products/services/product.service";
+import { listGlobalSizes } from "@/modules/products/services/size.service";
 
 type ProductsPageProps = {
   searchParams?: {
@@ -25,7 +27,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const pageSize = getPositiveInt(searchParams?.pageSize, 25, 100);
   const q = searchParams?.q?.trim() || undefined;
 
-  const [productsResult, suppliers] = await Promise.all([
+  const [productsResult, suppliers, globalSizes] = await Promise.all([
     listProductsPaginated({ page, pageSize, search: q }),
     prisma.supplier.findMany({
       where: {
@@ -33,7 +35,8 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       },
       select: { id: true, name: true },
       orderBy: { name: "asc" }
-    })
+    }),
+    listGlobalSizes()
   ]);
 
   const makeHref = (nextPage: number) => {
@@ -49,7 +52,8 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Productos</h2>
-      <ProductForm suppliers={suppliers} />
+      <SizesManager initialSizes={globalSizes} />
+      <ProductForm suppliers={suppliers} globalSizes={globalSizes} />
       <form className="flex flex-wrap items-center gap-2" method="get">
         <input
           name="q"
