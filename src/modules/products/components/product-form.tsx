@@ -162,7 +162,7 @@ export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
         </label>
         {globalSizes.length === 0 ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            No hay talles definidos. Agrega talles desde "Gestionar Talles Disponibles" arriba.
+            No hay talles definidos. Agrega talles desde &quot;Gestionar Talles Disponibles&quot; arriba.
           </p>
         ) : (
           <div className="flex flex-wrap gap-2 rounded-lg border p-3">
