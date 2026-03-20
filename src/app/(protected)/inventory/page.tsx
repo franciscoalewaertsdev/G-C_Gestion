@@ -1,5 +1,6 @@
 import { prisma } from "@/db/prisma";
 import { StockEntryForm } from "@/modules/inventory/components/stock-entry-form";
+import { InventoryEditFullButton } from "@/modules/inventory/components/inventory-edit-full-button";
 import { InventoryEntryActions } from "@/modules/inventory/components/inventory-entry-actions";
 import { listStockEntriesPaginated } from "@/modules/inventory/services/stock-entry.service";
 import { formatDate } from "@/lib/utils";
@@ -121,6 +122,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                 >
                   Descargar PDF
                 </a>
+                <InventoryEditFullButton id={entry.id} />
                 <InventoryEntryActions id={entry.id} />
               </div>
             </div>

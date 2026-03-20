@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
-import { registerStockEntryAction } from "@/modules/inventory/server-actions/stock-entry.actions";
+import { registerStockEntryAction, updateStockEntryAction } from "@/modules/inventory/server-actions/stock-entry.actions";
 import { createStockEntrySchema } from "@/modules/inventory/schemas/stock-entry.schema";
 
 type Props = {
@@ -19,6 +19,17 @@ type Props = {
     supplierId: string;
     variants: Array<{ id: string; name: string; value: string }>;
   }>;
+  initialEntry?: {
+    id: string;
+    supplierId: string;
+    entryDate: Date;
+    notes: string | null;
+    items: Array<{
+      productId: string;
+      variantId: string | null;
+      quantity: number;
+    }>;
+  };
 };
 
 type FormValues = {
@@ -34,11 +45,30 @@ type StockItemRow = {
   quantity: number;
 };
 
+type InventoryEditEventDetail = {
+  id: string;
+  supplierId: string;
+  entryDate: Date;
+  notes: string | null;
+  items: Array<{
+    productId: string;
+    variantId: string | null;
+    quantity: number;
+  }>;
+};
+
 function getTodayInputValue() {
   const now = new Date();
   const year = now.getFullYear();
   const month = `${now.getMonth() + 1}`.padStart(2, "0");
   const day = `${now.getDate()}`.padStart(2, "0");
+  return `${day}/${month}/${year}`;
+}
+
+function toDayMonthYearDate(value: Date) {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
   return `${day}/${month}/${year}`;
 }
 
@@ -68,10 +98,12 @@ function parseDayMonthYearDate(value: string) {
   return parsed;
 }
 
-export function StockEntryForm({ suppliers, products }: Props) {
+export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [focusedProductRow, setFocusedProductRow] = useState<number | null>(null);
+  const [editingEntry, setEditingEntry] = useState<Props["initialEntry"] | null>(initialEntry ?? null);
+  const isEditMode = Boolean(editingEntry);
   const todayInputValue = getTodayInputValue();
   const defaultSupplierId = suppliers[0]?.id ?? "";
   const createEmptyRow = (): StockItemRow => ({
@@ -80,9 +112,33 @@ export function StockEntryForm({ suppliers, products }: Props) {
     variantId: "",
     quantity: 1
   });
-  const [items, setItems] = useState<StockItemRow[]>([
-    createEmptyRow()
-  ]);
+  const mapEntryToRows = useCallback(
+    (entry: Props["initialEntry"] | null): StockItemRow[] => {
+      if (!entry || entry.items.length === 0) {
+        return [
+          {
+            productId: "",
+            productQuery: "",
+            variantId: "",
+            quantity: 1
+          }
+        ];
+      }
+
+      return entry.items.map((item) => {
+        const product = products.find((productRow) => productRow.id === item.productId);
+        const fallbackVariantId = product?.variants[0]?.id ?? "";
+        return {
+          productId: item.productId,
+          productQuery: product?.name ?? "",
+          variantId: item.variantId ?? fallbackVariantId,
+          quantity: item.quantity
+        };
+      });
+    },
+    [products]
+  );
+  const [items, setItems] = useState<StockItemRow[]>(() => mapEntryToRows(initialEntry ?? null));
   const router = useRouter();
 
   const form = useForm<FormValues>({
@@ -92,6 +148,37 @@ export function StockEntryForm({ suppliers, products }: Props) {
       notes: ""
     }
   });
+
+  useEffect(() => {
+    const handleStartEdit = (event: Event) => {
+      const customEvent = event as CustomEvent<InventoryEditEventDetail>;
+      setEditingEntry(customEvent.detail);
+      setError(null);
+      setFocusedProductRow(null);
+    };
+
+    window.addEventListener("inventory:start-edit", handleStartEdit as EventListener);
+    return () => window.removeEventListener("inventory:start-edit", handleStartEdit as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (editingEntry) {
+      form.reset({
+        supplierId: editingEntry.supplierId,
+        entryDate: toDayMonthYearDate(new Date(editingEntry.entryDate)),
+        notes: editingEntry.notes ?? ""
+      });
+      setItems(mapEntryToRows(editingEntry));
+      return;
+    }
+
+    form.reset({
+      supplierId: defaultSupplierId,
+      entryDate: getTodayInputValue(),
+      notes: ""
+    });
+    setItems([createEmptyRow()]);
+  }, [defaultSupplierId, editingEntry, form, mapEntryToRows]);
 
   const selectedSupplierId = form.watch("supplierId");
 
@@ -215,19 +302,40 @@ export function StockEntryForm({ suppliers, products }: Props) {
           items: parsedItems
         });
 
-        await registerStockEntryAction(payload);
-        form.reset({ supplierId: defaultSupplierId, entryDate: getTodayInputValue(), notes: "" });
-        setItems([createEmptyRow()]);
+        if (editingEntry) {
+          await updateStockEntryAction({ id: editingEntry.id, data: payload });
+          setEditingEntry(null);
+        } else {
+          await registerStockEntryAction(payload);
+          form.reset({ supplierId: defaultSupplierId, entryDate: getTodayInputValue(), notes: "" });
+          setItems([createEmptyRow()]);
+        }
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "No se pudo registrar el ingreso");
+        setError(e instanceof Error ? e.message : "No se pudo guardar el ingreso");
       }
     });
   });
 
   return (
     <form onSubmit={onSubmit} className="space-y-3 rounded-xl border bg-white p-4">
-      <h3 className="text-sm font-semibold">Nuevo ingreso de stock (albaran digital)</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">
+          {isEditMode ? "Editar ingreso de stock" : "Nuevo ingreso de stock (albaran digital)"}
+        </h3>
+        {isEditMode && (
+          <button
+            type="button"
+            className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-slate-100"
+            onClick={() => {
+              setEditingEntry(null);
+              setError(null);
+            }}
+          >
+            Cancelar edicion
+          </button>
+        )}
+      </div>
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">Proveedor</label>
@@ -372,7 +480,7 @@ export function StockEntryForm({ suppliers, products }: Props) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button disabled={isPending}>Registrar ingreso</Button>
+      <Button disabled={isPending}>{isEditMode ? "Guardar cambios" : "Registrar ingreso"}</Button>
     </form>
   );
 }

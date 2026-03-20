@@ -5,8 +5,10 @@ import { requireSession } from "@/lib/auth/session";
 import { createStockEntrySchema } from "@/modules/inventory/schemas/stock-entry.schema";
 import {
   deleteStockEntry,
+  getStockEntryForEdit,
   getStockEntryNotesById,
   registerStockEntry,
+  updateStockEntry,
   updateStockEntryNotes
 } from "@/modules/inventory/services/stock-entry.service";
 
@@ -35,6 +37,26 @@ export async function getStockEntryNotesAction(id: string) {
   }
 
   return entry.notes ?? "";
+}
+
+export async function updateStockEntryAction(payload: { id: string; data: unknown }) {
+  await requireSession();
+  const parsed = createStockEntrySchema.parse(payload.data);
+  await updateStockEntry(payload.id, parsed);
+  revalidateTag("inventory");
+  revalidateTag("products");
+  revalidateTag("dashboard");
+  revalidateTag("reports");
+}
+
+export async function getStockEntryForEditAction(id: string) {
+  await requireSession();
+  const entry = await getStockEntryForEdit(id);
+  if (!entry) {
+    throw new Error("Ingreso no encontrado");
+  }
+
+  return entry;
 }
 
 export async function deleteStockEntryAction(id: string) {
