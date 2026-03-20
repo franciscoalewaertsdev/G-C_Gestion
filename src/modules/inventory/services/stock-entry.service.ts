@@ -53,39 +53,34 @@ export async function registerStockEntry(data: CreateStockEntryInput, userId: st
       include: { items: true }
     });
 
-    await Promise.all(
-      data.items.map((item) =>
-        tx.product.update({
-          where: { id: item.productId },
-          data: {
-            currentStock: {
-              increment: item.quantity
-            }
-          }
-        })
-      )
-    );
+    // Aggregate quantities per unique product to minimise UPDATE statements
+    const productQtyMap = new Map<string, number>();
+    for (const item of data.items) {
+      productQtyMap.set(item.productId, (productQtyMap.get(item.productId) ?? 0) + item.quantity);
+    }
+    for (const [productId, totalQty] of productQtyMap) {
+      await tx.product.updateMany({
+        where: { id: productId },
+        data: { currentStock: { increment: totalQty } }
+      });
+    }
 
-    await Promise.all(
-      data.items
-        .filter(
-          (item): item is CreateStockEntryInput["items"][number] & { variantId: string } =>
-            Boolean(item.variantId)
-        )
-        .map((item) =>
-          tx.productVariant.update({
-            where: { id: item.variantId },
-            data: {
-              stock: {
-                increment: item.quantity
-              }
-            }
-          })
-        )
-    );
+    // Aggregate quantities per unique variant
+    const variantQtyMap = new Map<string, number>();
+    for (const item of data.items) {
+      if (item.variantId) {
+        variantQtyMap.set(item.variantId, (variantQtyMap.get(item.variantId) ?? 0) + item.quantity);
+      }
+    }
+    for (const [variantId, totalQty] of variantQtyMap) {
+      await tx.productVariant.updateMany({
+        where: { id: variantId },
+        data: { stock: { increment: totalQty } }
+      });
+    }
 
     return stockEntry;
-  });
+  }, { timeout: 30000 });
 }
 
 export async function listStockEntries() {
