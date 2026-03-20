@@ -121,7 +121,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                 >
                   Descargar PDF
                 </a>
-                <InventoryEntryActions id={entry.id} notes={entry.notes} />
+                <InventoryEntryActions id={entry.id} />
               </div>
             </div>
           ))}

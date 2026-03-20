@@ -93,7 +93,6 @@ export async function listStockEntries() {
     select: {
       id: true,
       entryDate: true,
-      notes: true,
       supplier: {
         select: {
           name: true
@@ -122,7 +121,6 @@ const listStockEntriesPaginatedCached = unstable_cache(
         select: {
           id: true,
           entryDate: true,
-          notes: true,
           supplier: {
             select: {
               name: true
@@ -173,6 +171,16 @@ export async function getStockEntryById(id: string) {
           product: true
         }
       }
+    }
+  });
+}
+
+export async function getStockEntryNotesById(id: string) {
+  return prisma.stockEntry.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      notes: true
     }
   });
 }

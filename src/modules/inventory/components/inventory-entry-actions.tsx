@@ -2,18 +2,39 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { deleteStockEntryAction, updateStockEntryNotesAction } from "@/modules/inventory/server-actions/stock-entry.actions";
+import {
+  deleteStockEntryAction,
+  getStockEntryNotesAction,
+  updateStockEntryNotesAction
+} from "@/modules/inventory/server-actions/stock-entry.actions";
 
 type InventoryEntryActionsProps = {
   id: string;
-  notes: string | null;
 };
 
-export function InventoryEntryActions({ id, notes }: InventoryEntryActionsProps) {
+export function InventoryEntryActions({ id }: InventoryEntryActionsProps) {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
-  const [notesValue, setNotesValue] = useState(notes ?? "");
+  const [notesValue, setNotesValue] = useState("");
+
+  const startEditing = async () => {
+    try {
+      setPendingDelete(false);
+      setIsLoadingNotes(true);
+      const currentNotes = await getStockEntryNotesAction(id);
+      setNotesValue(currentNotes);
+      setIsEditing(true);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "No se pudieron cargar las notas."
+      });
+    } finally {
+      setIsLoadingNotes(false);
+    }
+  };
 
   const saveNotes = async () => {
     try {
@@ -59,7 +80,7 @@ export function InventoryEntryActions({ id, notes }: InventoryEntryActionsProps)
               className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-slate-100"
               onClick={() => {
                 setIsEditing(false);
-                setNotesValue(notes ?? "");
+                setNotesValue("");
               }}
             >
               Cancelar
@@ -70,12 +91,10 @@ export function InventoryEntryActions({ id, notes }: InventoryEntryActionsProps)
             <button
               type="button"
               className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-slate-100"
-              onClick={() => {
-                setPendingDelete(false);
-                setIsEditing(true);
-              }}
+              onClick={() => void startEditing()}
+              disabled={isLoadingNotes}
             >
-              Editar
+              {isLoadingNotes ? "Cargando..." : "Editar"}
             </button>
             {pendingDelete ? (
               <>

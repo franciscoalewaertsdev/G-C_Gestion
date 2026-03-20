@@ -208,23 +208,10 @@ export function StockEntryForm({ suppliers, products }: Props) {
           quantity: Number(item.quantity)
         }));
 
-        const variantSummary = items
-          .map((item) => {
-            const product = products.find((p) => p.id === item.productId);
-            const variant = product?.variants.find((v) => v.id === item.variantId);
-            if (!variant) {
-              return `${product?.name ?? "Producto"}: sin variante`;
-            }
-            return `${product?.name ?? "Producto"}: ${variant.name} ${variant.value}`;
-          })
-          .join(" | ");
-
         const payload = createStockEntrySchema.parse({
           supplierId: values.supplierId,
           entryDate: parseDayMonthYearDate(values.entryDate),
-          notes: values.notes
-            ? `${values.notes} | Variantes: ${variantSummary}`
-            : `Variantes: ${variantSummary}`,
+          notes: values.notes.trim() || undefined,
           items: parsedItems
         });
 

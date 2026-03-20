@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { createStockEntrySchema } from "@/modules/inventory/schemas/stock-entry.schema";
 import {
   deleteStockEntry,
+  getStockEntryNotesById,
   registerStockEntry,
   updateStockEntryNotes
 } from "@/modules/inventory/services/stock-entry.service";
@@ -24,6 +25,16 @@ export async function registerStockEntryAction(payload: unknown) {
 export async function updateStockEntryNotesAction(payload: { id: string; notes: string }) {
   await updateStockEntryNotes(payload.id, payload.notes);
   revalidateTag("inventory");
+}
+
+export async function getStockEntryNotesAction(id: string) {
+  await requireSession();
+  const entry = await getStockEntryNotesById(id);
+  if (!entry) {
+    throw new Error("Ingreso no encontrado");
+  }
+
+  return entry.notes ?? "";
 }
 
 export async function deleteStockEntryAction(id: string) {
