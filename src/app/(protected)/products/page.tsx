@@ -51,8 +51,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Productos</h2>
-      <SizesManager initialSizes={globalSizes} />
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-2xl font-bold">Productos</h2>
+        <SizesManager initialSizes={globalSizes} />
+      </div>
       <ProductForm suppliers={suppliers} globalSizes={globalSizes} />
       <form className="flex flex-wrap items-center gap-2" method="get">
         <input
