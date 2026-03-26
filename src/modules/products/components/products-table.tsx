@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils";
+import { ProductEditFullButton } from "@/modules/products/components/product-edit-full-button";
 import { deleteProductAction, updateProductBasicAction } from "@/modules/products/server-actions/product.actions";
 
 type ProductRow = {
@@ -41,15 +42,27 @@ export function ProductsTable({ data }: { data: ProductRow[] }) {
 
   const filteredData = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) {
+    if (query.length < 2) {
       return data;
     }
 
     return data.filter((item) => {
       const byName = item.name.toLowerCase().includes(query);
-      const bySupplier = item.supplier.toLowerCase().includes(query);
-      return byName || bySupplier;
+      return byName;
     });
+  }, [data, search]);
+
+  const suggestions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (query.length < 2) {
+      return [] as string[];
+    }
+
+    const uniqueNames = Array.from(new Set(data.map((item) => item.name)));
+    return uniqueNames
+      .filter((name) => name.toLowerCase().includes(query))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 8);
   }, [data, search]);
 
   const handleDelete = async (id: string) => {
@@ -149,11 +162,20 @@ export function ProductsTable({ data }: { data: ProductRow[] }) {
 
   return (
     <div className="space-y-4">
-      <Input
-        placeholder="Buscar producto o proveedor..."
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
+      <div className="space-y-2">
+        <Input
+          placeholder="Buscar por nombre (minimo 2 caracteres)..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          list="product-name-suggestions"
+        />
+        <datalist id="product-name-suggestions">
+          {suggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <p className="text-xs text-slate-500">La tabla se filtra dinamicamente al escribir 2 o mas letras.</p>
+      </div>
 
       {feedback && (
         <div
@@ -318,6 +340,7 @@ export function ProductsTable({ data }: { data: ProductRow[] }) {
                           >
                             Editar
                           </button>
+                          <ProductEditFullButton id={product.id} />
                           {pendingDeleteId === product.id ? (
                             <>
                               <button

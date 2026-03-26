@@ -41,8 +41,8 @@ type FormValues = {
 type StockItemRow = {
   productId: string;
   productQuery: string;
-  variantId: string;
   quantity: number;
+  variantQuantities: Record<string, number>;
 };
 
 type InventoryEditEventDetail = {
@@ -109,8 +109,8 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
   const createEmptyRow = (): StockItemRow => ({
     productId: "",
     productQuery: "",
-    variantId: "",
-    quantity: 1
+    quantity: 1,
+    variantQuantities: {}
   });
   const mapEntryToRows = useCallback(
     (entry: Props["initialEntry"] | null): StockItemRow[] => {
@@ -119,22 +119,41 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
           {
             productId: "",
             productQuery: "",
-            variantId: "",
-            quantity: 1
+            quantity: 1,
+            variantQuantities: {}
           }
         ];
       }
 
-      return entry.items.map((item) => {
+      const groupedByProduct = new Map<string, StockItemRow>();
+
+      for (const item of entry.items) {
+        const existing = groupedByProduct.get(item.productId);
+        if (existing) {
+          if (item.variantId) {
+            existing.variantQuantities[item.variantId] =
+              (existing.variantQuantities[item.variantId] ?? 0) + item.quantity;
+          } else {
+            existing.quantity += item.quantity;
+          }
+          continue;
+        }
+
         const product = products.find((productRow) => productRow.id === item.productId);
-        const fallbackVariantId = product?.variants[0]?.id ?? "";
-        return {
+        const variantQuantities: Record<string, number> = {};
+        if (item.variantId) {
+          variantQuantities[item.variantId] = item.quantity;
+        }
+
+        groupedByProduct.set(item.productId, {
           productId: item.productId,
           productQuery: product?.name ?? "",
-          variantId: item.variantId ?? fallbackVariantId,
-          quantity: item.quantity
-        };
-      });
+          quantity: item.variantId ? 0 : item.quantity,
+          variantQuantities
+        });
+      }
+
+      return Array.from(groupedByProduct.values());
     },
     [products]
   );
@@ -194,11 +213,15 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
 
         if (existsInSupplier) {
           const product = filteredProducts.find((p) => p.id === item.productId);
-          const variantExists = product?.variants.some((variant) => variant.id === item.variantId);
+          const validVariantIds = new Set((product?.variants ?? []).map((variant) => variant.id));
+          const variantQuantities = Object.fromEntries(
+            Object.entries(item.variantQuantities).filter(([variantId]) => validVariantIds.has(variantId))
+          );
+
           return {
             ...item,
             productQuery: product?.name ?? item.productQuery,
-            variantId: variantExists ? item.variantId : product?.variants[0]?.id ?? ""
+            variantQuantities
           };
         }
 
@@ -206,7 +229,8 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
           ...item,
           productId: "",
           productQuery: "",
-          variantId: ""
+          quantity: 1,
+          variantQuantities: {}
         };
       })
     );
@@ -224,14 +248,34 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
     setItems((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
-  const updateRow = (index: number, key: "variantId" | "quantity", value: string | number) => {
+  const updateRow = (index: number, key: "quantity", value: number) => {
     setItems((prev) =>
       prev.map((item, i) => {
         if (i !== index) {
           return item;
         }
 
-        return { ...item, [key]: value } as StockItemRow;
+        return { ...item, [key]: Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0 } as StockItemRow;
+      })
+    );
+  };
+
+  const updateVariantQuantity = (index: number, variantId: string, value: number) => {
+    const safeValue = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+
+    setItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) {
+          return item;
+        }
+
+        return {
+          ...item,
+          variantQuantities: {
+            ...item.variantQuantities,
+            [variantId]: safeValue
+          }
+        };
       })
     );
   };
@@ -247,7 +291,8 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
           ...item,
           productQuery: query,
           productId: "",
-          variantId: ""
+          quantity: 1,
+          variantQuantities: {}
         };
       })
     );
@@ -269,7 +314,8 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
           ...item,
           productId: product.id,
           productQuery: product.name,
-          variantId: product.variants[0]?.id ?? ""
+          quantity: 1,
+          variantQuantities: Object.fromEntries(product.variants.map((variant) => [variant.id, 0]))
         };
       })
     );
@@ -289,11 +335,41 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
           throw new Error("Selecciona un producto valido en todas las filas.");
         }
 
-        const parsedItems = items.map((item) => ({
-          productId: item.productId,
-          variantId: item.variantId || undefined,
-          quantity: Number(item.quantity)
-        }));
+        const parsedItems: Array<{ productId: string; variantId?: string; quantity: number }> = items.flatMap(
+          (item): Array<{ productId: string; variantId?: string; quantity: number }> => {
+          const product = filteredProducts.find((productRow) => productRow.id === item.productId);
+          if (!product) {
+            return [];
+          }
+
+          if (product.variants.length === 0) {
+            const qty = Number(item.quantity);
+            return qty > 0
+              ? [
+                  {
+                    productId: item.productId,
+                    quantity: qty
+                  }
+                ]
+              : [];
+          }
+
+          return product.variants
+            .map((variant) => {
+              const qty = Number(item.variantQuantities[variant.id] ?? 0);
+              return {
+                productId: item.productId,
+                variantId: variant.id,
+                quantity: qty
+              };
+            })
+            .filter((entry) => entry.quantity > 0);
+          }
+        );
+
+        if (parsedItems.length === 0) {
+          throw new Error("Ingresa al menos una cantidad mayor a cero.");
+        }
 
         const payload = createStockEntrySchema.parse({
           supplierId: values.supplierId,
@@ -419,31 +495,36 @@ export function StockEntryForm({ suppliers, products, initialEntry }: Props) {
                 </div>
               </div>
 
-              <div className="md:col-span-3">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Variante / Talle</label>
-                <select
-                  className="h-10 w-full rounded-md border px-3"
-                  value={item.variantId}
-                  onChange={(event) => updateRow(index, "variantId", event.target.value)}
-                  disabled={variants.length === 0}
-                >
-                  {variants.length === 0 && <option value="">Sin variantes</option>}
-                  {variants.map((variant) => (
-                    <option key={variant.id} value={variant.id}>
-                      {variant.name}: {variant.value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Cantidad</label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={(event) => updateRow(index, "quantity", Number(event.target.value))}
-                />
+              <div className="md:col-span-5">
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  {variants.length === 0 ? "Cantidad" : "Cantidades por talle"}
+                </label>
+                {variants.length === 0 ? (
+                  <Input
+                    type="number"
+                    min={0}
+                    value={item.quantity}
+                    onChange={(event) => updateRow(index, "quantity", Number(event.target.value))}
+                  />
+                ) : (
+                  <div className="flex h-10 items-center gap-2 overflow-x-auto whitespace-nowrap rounded-md border bg-slate-50 px-2">
+                    {variants.map((variant) => (
+                      <div key={variant.id} className="inline-flex shrink-0 items-center gap-1">
+                        <label className="w-8 text-center text-xs font-semibold text-slate-700">{variant.value}</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={99}
+                          value={item.variantQuantities[variant.id] ?? 0}
+                          className="h-7 w-12 px-1 text-center"
+                          onChange={(event) =>
+                            updateVariantQuantity(index, variant.id, Number(event.target.value))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-2">

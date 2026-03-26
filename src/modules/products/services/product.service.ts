@@ -299,6 +299,35 @@ export async function updateProduct(data: UpdateProductInput) {
   }
 }
 
+export async function getProductForEdit(id: string) {
+  return prisma.product.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      barcode: true,
+      costPrice: true,
+      price: true,
+      currentStock: true,
+      lowStockAlert: true,
+      supplierId: true,
+      variants: {
+        select: {
+          id: true,
+          name: true,
+          value: true,
+          stock: true,
+          extraPrice: true
+        },
+        orderBy: {
+          value: "asc"
+        }
+      }
+    }
+  });
+}
+
 export async function deleteProduct(id: string) {
   return prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({ where: { id } });

@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createProductAction } from "@/modules/products/server-actions/product.actions";
+import { createProductAction, updateProductFullAction } from "@/modules/products/server-actions/product.actions";
 import { createProductSchema, CreateProductInput } from "@/modules/products/schemas/product.schema";
 
 type ProductFormProps = {
@@ -14,6 +14,25 @@ type ProductFormProps = {
 };
 
 type ProductFormValues = Omit<CreateProductInput, "variants">;
+
+type EditableProduct = {
+  id: string;
+  name: string;
+  description: string | null;
+  barcode: string | null;
+  costPrice: number;
+  price: number;
+  currentStock: number;
+  lowStockAlert: number;
+  supplierId: string;
+  variants: Array<{
+    id: string;
+    name: string;
+    value: string;
+    stock: number;
+    extraPrice: number | null;
+  }>;
+};
 
 const FALLBACK_SIZE_ORDER = ["O/S", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
 
@@ -31,6 +50,7 @@ export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
 
   const form = useForm<ProductFormValues>({
     defaultValues: {
@@ -44,6 +64,29 @@ export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
       supplierId: suppliers[0]?.id ?? ""
     }
   });
+
+  useEffect(() => {
+    const handleStartEdit = (event: Event) => {
+      const customEvent = event as CustomEvent<EditableProduct>;
+      const product = customEvent.detail;
+      setEditingProduct(product);
+      setError(null);
+      form.reset({
+        name: product.name,
+        description: product.description ?? "",
+        barcode: product.barcode ?? "",
+        costPrice: product.costPrice,
+        price: product.price,
+        currentStock: product.currentStock,
+        lowStockAlert: product.lowStockAlert,
+        supplierId: product.supplierId
+      });
+      setSelectedSizes(sortSizes(product.variants.map((variant) => variant.value), FALLBACK_SIZE_ORDER));
+    };
+
+    window.addEventListener("products:start-edit", handleStartEdit as EventListener);
+    return () => window.removeEventListener("products:start-edit", handleStartEdit as EventListener);
+  }, [form]);
 
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) => {
@@ -85,7 +128,31 @@ export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
           variants
         });
 
-        await createProductAction(payload);
+        if (editingProduct) {
+          await updateProductFullAction({
+            id: editingProduct.id,
+            data: {
+              name: payload.name,
+              description: payload.description,
+              barcode: payload.barcode,
+              costPrice: payload.costPrice,
+              price: payload.price,
+              lowStockAlert: payload.lowStockAlert,
+              supplierId: payload.supplierId,
+              selectedSizes,
+              existingVariants: editingProduct.variants.map((variant) => ({
+                id: variant.id,
+                value: variant.value,
+                stock: variant.stock,
+                extraPrice: variant.extraPrice
+              }))
+            }
+          });
+          setEditingProduct(null);
+        } else {
+          await createProductAction(payload);
+        }
+
         form.reset({
           name: "",
           description: "",
@@ -99,13 +166,41 @@ export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
         setSelectedSizes([]);
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "No se pudo crear el producto");
+        setError(e instanceof Error ? e.message : "No se pudo guardar el producto");
       }
     });
   });
 
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-3">
+      <div className="md:col-span-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">
+          {editingProduct ? "Editar producto" : "Nuevo producto"}
+        </h3>
+        {editingProduct && (
+          <button
+            type="button"
+            className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-slate-100"
+            onClick={() => {
+              setEditingProduct(null);
+              setError(null);
+              setSelectedSizes([]);
+              form.reset({
+                name: "",
+                description: "",
+                barcode: "",
+                costPrice: 0,
+                price: 0,
+                currentStock: 0,
+                lowStockAlert: 5,
+                supplierId: suppliers[0]?.id ?? ""
+              });
+            }}
+          >
+            Cancelar edicion
+          </button>
+        )}
+      </div>
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">Nombre del producto</label>
         <Input placeholder="" {...form.register("name")} />
@@ -195,7 +290,7 @@ export function ProductForm({ suppliers, globalSizes }: ProductFormProps) {
       </div>
       {error && <p className="md:col-span-3 text-sm text-red-600">{error}</p>}
       <div className="md:col-span-3">
-        <Button disabled={isPending}>Crear producto</Button>
+        <Button disabled={isPending}>{editingProduct ? "Guardar cambios" : "Crear producto"}</Button>
       </div>
     </form>
   );
