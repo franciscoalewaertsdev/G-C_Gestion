@@ -129,6 +129,10 @@ const getTopProductsCached = unstable_cache(
       take: limit
     });
 
+    const groupedWithProduct = grouped.filter(
+      (item): item is (typeof grouped)[number] & { productId: string } => Boolean(item.productId)
+    );
+
     const products = await prisma.product.findMany({
       select: {
         id: true,
@@ -136,12 +140,12 @@ const getTopProductsCached = unstable_cache(
       },
       where: {
         id: {
-          in: grouped.map((item) => item.productId)
+          in: groupedWithProduct.map((item) => item.productId)
         }
       }
     });
 
-    return grouped.map((item) => ({
+    return groupedWithProduct.map((item) => ({
       product: products.find((product) => product.id === item.productId),
       quantity: item._sum.quantity ?? 0,
       subtotal: Number(item._sum.subtotal ?? 0)

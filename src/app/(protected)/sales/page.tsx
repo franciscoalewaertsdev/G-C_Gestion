@@ -146,7 +146,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
           discountAmount: Number(sale.discountAmount),
           totalFinal: Number(sale.totalFinal),
           items: sale.items.map((item) => ({
-            productName: item.product.name,
+            productName: item.product?.name ?? item.manualProductName ?? "Producto manual",
             variantLabel: item.variant ? `${item.variant.name}: ${item.variant.value}` : null,
             quantity: item.quantity,
             unitPrice: Number(item.unitPrice),

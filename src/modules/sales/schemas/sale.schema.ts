@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 const saleItemSchema = z.object({
-  productId: z.string().min(1),
+  productId: z.string().min(1).optional(),
   variantId: z.string().min(1).optional(),
+  isManual: z.boolean().default(false),
+  manualProductName: z.string().trim().min(2).optional(),
   quantity: z.number().int().positive(),
   unitPrice: z.number().positive()
 });
@@ -28,6 +30,43 @@ export const createSaleSchema = z.object({
       path: ["customer"]
     });
   }
+
+  value.items.forEach((item, index) => {
+    if (item.isManual) {
+      if (!item.manualProductName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Debes indicar el nombre del producto manual.",
+          path: ["items", index, "manualProductName"]
+        });
+      }
+
+      if (item.productId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Los items manuales no deben tener productId.",
+          path: ["items", index, "productId"]
+        });
+      }
+
+      if (item.variantId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Los items manuales no pueden tener variante.",
+          path: ["items", index, "variantId"]
+        });
+      }
+      return;
+    }
+
+    if (!item.productId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Debes seleccionar un producto del sistema o marcarlo como manual.",
+        path: ["items", index, "productId"]
+      });
+    }
+  });
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;

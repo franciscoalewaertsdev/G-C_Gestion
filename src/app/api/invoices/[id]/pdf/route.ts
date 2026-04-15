@@ -19,7 +19,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     customerNif: invoice.customer?.documentId ?? "-",
     customerAddress: "-",
     items: invoice.sale.items.map((item) => ({
-      productName: item.product.name,
+      productName: item.product?.name ?? item.manualProductName ?? "Producto manual",
       quantity: item.quantity,
       unitPrice: Number(item.unitPrice),
       subtotal: Number(item.subtotal)

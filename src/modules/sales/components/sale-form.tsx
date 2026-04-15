@@ -45,15 +45,17 @@ type SaleFormSupplier = {
 
 type CartItem = {
   key: string;
-  productId: string;
+  productId?: string;
   variantId?: string;
   variantLabel?: string;
+  isManual: boolean;
+  manualProductName?: string;
   name: string;
   barcode: string | null;
   supplierName: string;
   quantity: number;
   unitPrice: number;
-  stock: number;
+  stock?: number;
 };
 
 type FormValues = {
@@ -67,6 +69,10 @@ type FormValues = {
   sendInvoiceEmail: boolean;
   search: string;
   supplierId: string;
+  manualMode: boolean;
+  manualProductName: string;
+  manualQuantity: number;
+  manualUnitPrice: number;
 };
 
 export function SaleForm({ products, suppliers }: { products: SaleFormProduct[]; suppliers: SaleFormSupplier[] }) {
@@ -89,7 +95,11 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
       customerEmail: "",
       sendInvoiceEmail: true,
       search: "",
-      supplierId: "ALL"
+      supplierId: "ALL",
+      manualMode: false,
+      manualProductName: "",
+      manualQuantity: 1,
+      manualUnitPrice: 0
     }
   });
 
@@ -98,6 +108,7 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
   const selectedDiscountType = form.watch("discountType");
   const selectedDiscountValue = Number(form.watch("discountValue") || 0);
   const generateInvoice = form.watch("generateInvoice");
+  const manualMode = form.watch("manualMode");
   const filteredProducts = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     if (normalizedSearch.length < 2) {
@@ -179,6 +190,7 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
             productId: product.id,
             variantId: selectedVariant?.id,
             variantLabel: getVariantLabel(product, selectedVariant?.id),
+            isManual: false,
             name: product.name,
             barcode: product.barcode,
             supplierName: product.supplierName,
@@ -193,7 +205,7 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
         item.key === key
           ? {
               ...item,
-              quantity: Math.min(item.quantity + 1, item.stock)
+              quantity: item.stock ? Math.min(item.quantity + 1, item.stock) : item.quantity + 1
             }
           : item
       );
@@ -209,11 +221,55 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
             return item;
           }
 
-          const safeQuantity = Number.isFinite(quantity) ? Math.max(1, Math.min(quantity, item.stock)) : 1;
+          const safeQuantity = Number.isFinite(quantity)
+            ? item.stock
+              ? Math.max(1, Math.min(quantity, item.stock))
+              : Math.max(1, quantity)
+            : 1;
           return { ...item, quantity: safeQuantity };
         })
         .filter((item) => item.quantity > 0)
     );
+  };
+
+  const addManualItem = () => {
+    const manualProductName = form.getValues("manualProductName").trim();
+    const manualQuantity = Number(form.getValues("manualQuantity") || 0);
+    const manualUnitPrice = Number(form.getValues("manualUnitPrice") || 0);
+
+    if (!manualProductName) {
+      setError("Debes escribir el nombre del producto manual.");
+      return;
+    }
+
+    if (!Number.isFinite(manualQuantity) || manualQuantity <= 0) {
+      setError("La cantidad del producto manual debe ser mayor a 0.");
+      return;
+    }
+
+    if (!Number.isFinite(manualUnitPrice) || manualUnitPrice <= 0) {
+      setError("El precio del producto manual debe ser mayor a 0.");
+      return;
+    }
+
+    setCart((current) => [
+      ...current,
+      {
+        key: `manual:${manualProductName}:${Date.now()}`,
+        isManual: true,
+        manualProductName,
+        name: manualProductName,
+        barcode: null,
+        supplierName: "Producto manual",
+        quantity: manualQuantity,
+        unitPrice: manualUnitPrice
+      }
+    ]);
+
+    form.setValue("manualProductName", "", { shouldDirty: true });
+    form.setValue("manualQuantity", 1, { shouldDirty: true });
+    form.setValue("manualUnitPrice", 0, { shouldDirty: true });
+    setError(null);
   };
 
   const removeItem = (key: string) => {
@@ -266,8 +322,10 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
               }
             : undefined,
           items: cart.map((item) => ({
-            productId: item.productId,
-            variantId: item.variantId,
+            productId: item.isManual ? undefined : item.productId,
+            variantId: item.isManual ? undefined : item.variantId,
+            isManual: item.isManual,
+            manualProductName: item.isManual ? item.manualProductName : undefined,
             quantity: item.quantity,
             unitPrice: item.unitPrice
           }))
@@ -298,7 +356,11 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
           customerEmail: "",
           sendInvoiceEmail: true,
           search: "",
-          supplierId: "ALL"
+          supplierId: "ALL",
+          manualMode: false,
+          manualProductName: "",
+          manualQuantity: 1,
+          manualUnitPrice: 0
         });
         setCart([]);
         setSelectedVariantByProduct({});
@@ -430,6 +492,32 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
         </div>
       )}
 
+      <div className="space-y-3 rounded-lg border p-3">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            {...form.register("manualMode")}
+          />
+          Producto fuera del sistema (carga manual)
+        </label>
+        {manualMode && (
+          <div className="grid gap-2 md:grid-cols-[1fr_120px_140px_auto]">
+            <Input placeholder="Nombre del producto" {...form.register("manualProductName")} />
+            <Input type="number" min={1} step={1} {...form.register("manualQuantity", { valueAsNumber: true })} />
+            <Input
+              type="number"
+              min={0.01}
+              step="0.01"
+              {...form.register("manualUnitPrice", { valueAsNumber: true })}
+            />
+            <Button type="button" variant="outline" onClick={addManualItem}>
+              Agregar manual
+            </Button>
+          </div>
+        )}
+      </div>
+
       <div className="space-y-2 rounded-lg border p-3">
         <p className="text-sm font-medium">Productos seleccionados</p>
         {cart.length === 0 && <p className="text-sm text-slate-500">Todavia no agregaste productos.</p>}
@@ -440,6 +528,7 @@ export function SaleForm({ products, suppliers }: { products: SaleFormProduct[];
               <p className="text-xs text-slate-500">
                 {item.barcode || "Sin codigo"} | {item.supplierName}
                 {item.variantLabel ? ` | ${item.variantLabel}` : ""}
+                {item.isManual ? " | Manual" : ""}
               </p>
             </div>
             <Input

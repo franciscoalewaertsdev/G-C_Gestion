@@ -54,7 +54,9 @@ async function getOrCreateCustomer(tx: Prisma.TransactionClient, customer?: Cust
 
 export async function registerSale(data: CreateSaleInput, userId: string) {
   return prisma.$transaction(async (tx) => {
-    const productIds = data.items.map((item) => item.productId);
+    const productIds = data.items
+      .filter((item): item is (typeof data.items)[number] & { productId: string } => !item.isManual && Boolean(item.productId))
+      .map((item) => item.productId);
     const products = await tx.product.findMany({
       where: { id: { in: productIds } },
       select: {
@@ -90,6 +92,22 @@ export async function registerSale(data: CreateSaleInput, userId: string) {
     const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
 
     for (const item of data.items) {
+      if (item.isManual) {
+        if (!item.manualProductName?.trim()) {
+          throw new Error("Debes indicar el nombre del producto manual.");
+        }
+
+        if (item.variantId) {
+          throw new Error("Los productos manuales no pueden tener talle.");
+        }
+
+        continue;
+      }
+
+      if (!item.productId) {
+        throw new Error("Debes seleccionar un producto del sistema o marcarlo como manual.");
+      }
+
       const product = productMap.get(item.productId);
       if (!product) {
         throw new Error(`Producto no encontrado: ${item.productId}`);
@@ -128,8 +146,9 @@ export async function registerSale(data: CreateSaleInput, userId: string) {
         totalFinal: discount.totalFinal,
         items: {
           create: data.items.map((item) => ({
-            productId: item.productId,
-            variantId: item.variantId,
+            productId: item.isManual ? null : item.productId,
+            manualProductName: item.isManual ? item.manualProductName?.trim() ?? null : null,
+            variantId: item.isManual ? null : item.variantId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             subtotal: item.quantity * item.unitPrice
@@ -142,7 +161,11 @@ export async function registerSale(data: CreateSaleInput, userId: string) {
       }
     });
 
-    const productUpdates = data.items.map((item) =>
+    const stockTrackedItems = data.items.filter(
+      (item): item is (typeof data.items)[number] & { productId: string } => !item.isManual && Boolean(item.productId)
+    );
+
+    const productUpdates = stockTrackedItems.map((item) =>
       tx.product.update({
         where: { id: item.productId },
         data: {
@@ -153,8 +176,8 @@ export async function registerSale(data: CreateSaleInput, userId: string) {
       })
     );
 
-    const variantUpdates = data.items
-      .filter((item): item is (typeof data.items)[number] & { variantId: string } => Boolean(item.variantId))
+    const variantUpdates = stockTrackedItems
+      .filter((item): item is (typeof stockTrackedItems)[number] & { variantId: string } => Boolean(item.variantId))
       .map((item) =>
         tx.productVariant.update({
           where: { id: item.variantId },
@@ -238,6 +261,7 @@ const listSalesPaginatedCached = unstable_cache(
           },
           items: {
             select: {
+              manualProductName: true,
               quantity: true,
               unitPrice: true,
               subtotal: true,
@@ -321,6 +345,7 @@ export async function listSales() {
       },
       items: {
         select: {
+          manualProductName: true,
           quantity: true,
           unitPrice: true,
           subtotal: true,
@@ -391,17 +416,19 @@ export async function deleteSale(id: string) {
 
     // Use updateMany per item so no crash if the product/variant was already deleted
     await Promise.all([
-      ...saleItems.map((item) =>
-        tx.product.updateMany({
-          where: { id: item.productId },
-          data: { currentStock: { increment: item.quantity } }
-        })
-      ),
       ...saleItems
-        .filter((item) => Boolean(item.variantId))
+        .filter((item): item is (typeof saleItems)[number] & { productId: string } => Boolean(item.productId))
+        .map((item) =>
+          tx.product.updateMany({
+            where: { id: item.productId },
+            data: { currentStock: { increment: item.quantity } }
+          })
+        ),
+      ...saleItems
+        .filter((item): item is (typeof saleItems)[number] & { variantId: string } => Boolean(item.variantId))
         .map((item) =>
           tx.productVariant.updateMany({
-            where: { id: item.variantId! },
+            where: { id: item.variantId },
             data: { stock: { increment: item.quantity } }
           })
         )

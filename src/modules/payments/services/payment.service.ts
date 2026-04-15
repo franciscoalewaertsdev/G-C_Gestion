@@ -79,6 +79,10 @@ const getMonthlySupplierPaymentsCached = unstable_cache(
       const month = sale.saleDate.getMonth() + 1;
 
       for (const item of sale.items) {
+        if (!item.product) {
+          continue;
+        }
+
         const supplierId = item.product.supplierId;
         const key = `${year}-${String(month).padStart(2, "0")}-${supplierId}`;
         const monthLabel = format(new Date(year, month - 1, 1), "MMMM yyyy", { locale: es });
@@ -229,6 +233,10 @@ export async function getMonthlySupplierPaymentReport(supplierId: string, year: 
     }
 
     for (const item of sale.items) {
+      if (!item.product) {
+        continue;
+      }
+
       const unitPrice = Number(item.product.costPrice);
       const totalPrice = unitPrice * item.quantity;
       const productCode = item.product.barcode?.trim() || null;
